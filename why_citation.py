@@ -36,6 +36,9 @@ class WhyCitation:
 
 
         self.raw_paper_df = pd.DataFrame(papers)
+        self.raw_paper_df = self.raw_paper_df[pd.notnull(self.raw_paper_df['abstract'])]
+        self.raw_paper_df = self.raw_paper_df[pd.notnull(self.raw_paper_df['title'])]
+        self.raw_paper_df = self.raw_paper_df[pd.notnull(self.raw_paper_df['citation'])]
         content_set = []
         for index, row in self.raw_paper_df.iterrows():
             content_set.append(row[2])
@@ -53,8 +56,7 @@ class WhyCitation:
         
         # for binary classification
         # print(self.raw_paper_df['citation'].describe())
-        self.raw_paper_df['citation'] = (self.raw_paper_df['citation'] >= 6).astype(int)
-        print (self.raw_paper_df['venue'].value_counts().count())
+        # self.raw_paper_df['citation'] = (self.raw_paper_df['citation'] >= 6).astype(int)
 
         '''
         (Pdb) self.raw_paper_df
@@ -96,14 +98,20 @@ class WhyCitation:
 
                 title_features = Title2Features(row[2])
                 has_acronym, has_mark, has_colon = title_features.feature_style()
-            # subarea = title_features.feature_topic()
                 low_freq_words = title_features.feature_novelty(self.common_word_set)
+                # model_feature_input = {
+                #     'has_acronym': int(has_acronym == True), # bool
+                #     'has_mark': int(has_mark == True),  # bool
+                #     'has_colon': int(has_colon == True), # bool
+                #     'num_low_freq_words': low_freq_words, # float
+                #     'numbers_in_Abs': numbers_in_Abs # list of numbers
+                # }
                 model_feature_input = {
-                    'has_acronym': int(has_acronym == True), # bool
-                    'has_mark': int(has_mark == True),  # bool
-                    'has_colon': int(has_colon == True), # bool
+                    'has_acronym': has_acronym, # bool
+                    'has_mark': has_mark,  # bool
+                    'has_colon': has_colon, # bool
                     'num_low_freq_words': low_freq_words, # float
-                    'numbers_in_Abs': numbers_in_Abs # list of numbers
+                    'numbers_in_Abs': numbers_in_Abs # float
                 }
                 feature_input.append(model_feature_input)
         self.paper_feature_df = pd.DataFrame(feature_input)
@@ -125,7 +133,21 @@ class Title2Features:
 
     def feature_style(self):
         tokens = self.tokens
-        has_acronym = any(len([c.isupper() for c in i]) >= 2 for i in tokens) or (tokens.index(':') == 1)
+        has_acronym = False
+        for i in tokens:
+            upper = 0
+            for c in i:
+                if c.isupper():
+                    upper += 1
+            if upper >= 2:
+                has_acronym = True
+                break
+        if ":" in tokens:
+            if tokens.index(':') == 1:
+                has_acronym = True
+
+
+        # has_acronym = any(len([c.isupper() for c in i]) >= 2 for i in tokens) or (tokens.index(':') == 1)
         pattern_mark = '[\?\!]'
         has_mark = re.search(pattern_mark, self.title)!=None
         has_colon = True if any(i == ':' for i in tokens) else False
@@ -231,13 +253,73 @@ class WhyCitation_AnsweredByCorrelation(WhyCitation):
         pmi = math.log10(p_label_feature / (0.5 * p_label))
         print(pmi)
     
+    def chi_squared(self, row_index, col_index):
+        from scipy.stats import chi2_contingency
+        from scipy.stats import chi2
+        df = self.paper_feature_df
+        row_true_col_false = 0
+        row_false_col_false = 0
+        row_true_col_true = 0
+        row_false_col_true = 0
+        for index, row in df.iterrows():
+            if row[row_index] and not row[col_index]:
+                row_true_col_false += 1
+            elif not row[row_index] and not row[col_index]:
+                row_false_col_false += 1
+            elif row[row_index] and row[col_index]:
+                row_true_col_true += 1
+            elif not row[row_index] and row[col_index]:
+                row_false_col_true += 1
+        contingency_table = [[row_false_col_false, row_false_col_true], [row_true_col_false, row_true_col_true]]
+        print(contingency_table)
+        stat, p, dof, expected = chi2_contingency(contingency_table)
+        print('dof=%d' % dof)
+        print(expected)
+        # interpret test-statistic
+        prob = 0.95
+        critical = chi2.ppf(prob, dof)
+        print('probability=%.3f, critical=%.3f, stat=%.3f' % (prob, critical, stat))
+        if abs(stat) >= critical:
+            print('Dependent (reject H0)')
+        else:
+            print('Independent (fail to reject H0)')
+        # interpret p-value
+        alpha = 1.0 - prob
+        print('significance=%.3f, p=%.3f' % (alpha, p))
+        if p <= alpha:
+            print('Dependent (reject H0)')
+        else:
+            print('Independent (fail to reject H0)')
+    
+    def Pearsons(self, index1, index2):
+        from scipy.stats import pearsonr
+        df = self.paper_feature_df
+        data1 = []
+        data2 = []
+        for index, row in df.iterrows():
+            if not np.isnan(row[index1]) and not np.isnan(row[index2]):
+                data1.append(row[index1])
+                data2.append(row[index2])
+        corr, _ = pearsonr(data1, data2)
+        print('Pearsons correlation: %.3f' % corr)
+
+    def selectKBest(self, k):
+        from sklearn.feature_selection import SelectKBest
+        from sklearn.feature_selection import chi2
+        df = self.paper_feature_df
+        df = df.dropna()
+        X = df.drop("citation",1)   #Feature Matrix
+        y = df["citation"]
+        select = SelectKBest(score_func=chi2, k=k)
+        z = select.fit_transform(X,y)
+        print(z)
 
 
 def main():
     why_citation = WhyCitation_AnsweredByCorrelation()
     why_citation._load_paper2citation_data()
-    # why_citation._load_paper_features()
-    # why_citation.pmi(1)
+    why_citation._load_paper_features()
+    why_citation.selectKBest(2)
 
 
 

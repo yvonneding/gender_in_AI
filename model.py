@@ -317,7 +317,19 @@ class Title2Features:
 
     def feature_style(self):
         tokens = self.tokens
-        has_acronym = any(len([c.isupper() for c in i]) >= 2 for i in tokens) or (tokens.index(':') == 1)
+        has_acronym = False
+        for i in tokens:
+            upper = 0
+            for c in i:
+                if c.isupper():
+                    upper += 1
+            if upper >= 2:
+                has_acronym = True
+                break
+        if ":" in tokens:
+            if tokens.index(':') == 1:
+                has_acronym = True
+        # has_acronym = any(len([c.isupper() for c in i]) >= 2 for i in tokens) or (tokens.index(':') == 1)
         pattern_mark = '[\?\!]'
         has_mark = re.search(pattern_mark, self.title)!=None
         has_colon = True if any(i == ':' for i in tokens) else False
