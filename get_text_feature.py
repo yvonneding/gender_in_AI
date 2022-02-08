@@ -255,6 +255,38 @@ class SingleCorpusLinguisticProperties:
                 i += 1
         return universities
 
+    def cosine_match(self, str1, str2):
+        from nltk.tokenize import RegexpTokenizer
+        from sklearn.metrics.pairwise import cosine_similarity
+        from sklearn.feature_extraction.text import CountVectorizer
+        corpus = [str1, str2]
+        token = RegexpTokenizer(r'[a-zA-Z0-9]+')
+        count_vectorizer = CountVectorizer(ngram_range=(1,1),tokenizer=token.tokenize, stop_words='english')
+        # if corpus:
+        #     return False
+        vec = count_vectorizer.fit_transform(corpus)
+        score = cosine_similarity(vec, vec)[0][1]
+        # print(score)
+        if score > 0.80:
+            return True
+        return False
+
+
+    def institution_rank(self, organizations):
+        universities = self.top_100_universities()
+        for j in range(len(organizations)):
+            if organizations[j]: # if it is not None
+                max_score = 0
+                for i in range(100):
+                    if(self.cosine_match(organizations[j], universities[i])):
+                        score = 1 - i/100
+                        if (score > max_score):
+                            max_score = score
+                if (max_score != 0):
+                    organizations[j] = max_score
+        # print(organizations)
+        return organizations
+
 
     
 if __name__ == '__main__':
