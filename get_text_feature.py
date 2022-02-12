@@ -236,7 +236,7 @@ class SingleCorpusLinguisticProperties:
         doc = self.nlp(self.corpus)
         for sent in doc.sentences:
             for ent in sent.ents:
-                if ent.type == "LANGUAGE" or ent.type == "NORP" or ent.type == "GPE":
+                if ent.type == "LANGUAGE" or ent.type == "NORP":
                     # if ent.text.lower() != "english":
                     language.add(ent.text)
                 
